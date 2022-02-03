@@ -1,0 +1,221 @@
+VIEW
+------------------------------------------
+CREATE VIEW forestation
+AS
+SELECT f.country_code 
+,f.country_name AS COUNTRY
+,f.year AS YEAR
+,f.forest_area_sqkm AS FOREST_AREA
+,((l.total_area_sq_mi)*2.59) AS TOTAL_AREA
+,r.region
+,r.income_group
+,((f.forest_area_sqkm / (l.total_area_sq_mi*2.59)) * 100) AS FOREST_PERCENTAGE
+FROM forest_area f
+INNER JOIN land_area l ON f.country_code = l.country_code
+AND f.year = l.year
+INNER JOIN regions r ON r.country_code = f.country_code 
+
+1A)
+
+SELECT SUM(FOREST_AREA) AS TOTAL_FOREST_AREA
+FROM forestation
+WHERE YEAR='1990' AND COUNTRY='World'
+
+1B)
+
+SELECT SUM(FOREST_AREA) AS TOTAL_FOREST_AREA
+FROM forestation
+WHERE YEAR='2016' AND COUNTRY='World'
+
+1C)
+
+SELECT
+SUM(FOREST_AREA) AS TOTAL_FOREST_AREA
+,LAG(SUM(FOREST_AREA)) OVER (ORDER BY year) AS
+TOTAL_FOREST_AREA_PREVIOUS_YEAR ,ROUND((SUM(FOREST_AREA) - LAG(SUM(FOREST_AREA)) OVER (ORDER BY year))::numeric, 2) AS DIFFERENCE
+, YEAR
+FROM forestation
+WHERE COUNTRY='World' and YEAR IN ('1990', '2016')
+GROUP BY YEAR
+ORDER BY YEAR DESC
+
+1D)
+
+SELECT
+SUM(FOREST_AREA) AS TOTAL_FOREST_AREA
+,LAG(SUM(FOREST_AREA)) OVER (ORDER BY year) AS
+TOTAL_FOREST_AREA_PREVIOUS_YEAR ,ROUND(((SUM(FOREST_AREA) - LAG(SUM(FOREST_AREA)) OVER (ORDER BY year))/(LAG(SUM(FOREST_AREA)) OVER (ORDER BY year)) * 100)::numeric, 2) AS PERCENTAGE_DIFFERENCE
+, YEAR 
+FROM forestation
+WHERE COUNTRY='World' and YEAR IN ('1990', '2016')
+GROUP BY YEAR
+ORDER BY YEAR DESC
+
+1E)
+WITH Table_Difference AS (
+	SELECT
+	SUM(FOREST_AREA) AS TOTAL_FOREST_AREA, LAG(SUM(FOREST_AREA)) OVER (ORDER BY year) AS TOTAL_FOREST_AREA_PREVIOUS_YEAR , ROUND((SUM(FOREST_AREA) - LAG(SUM(FOREST_AREA)) OVER (ORDER BY year))::numeric, 2) AS DIFFERENCE
+		, YEAR
+	FROM forestation
+	WHERE COUNTRY='World' and YEAR IN ('1990', '2016')
+	GROUP BY YEAR
+	ORDER BY YEAR DESC )
+
+SELECT COUNTRY, ROUND(TOTAL_AREA::numeric, 2)
+FROM forestation
+WHERE TOTAL_AREA <
+    (SELECT ABS(DIFFERENCE)
+     FROM Table_Difference
+     WHERE YEAR='2016')
+  AND YEAR='2016'
+ORDER BY 2 DESC
+LIMIT 1
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2)
+
+CREATE TABLE Region_Demographic
+AS
+SELECT region, FOREST_AREA, TOTAL_AREA, YEAR, SUM(TOTAL_AREA) AS TOTAL_CUMULATIVE_AREA
+FROM
+forestation
+GROUP BY YEAR, region, FOREST_AREA, TOTAL_AREA
+ORDER BY region
+
+2A)
+
+SELECT  region, year
+       ,(SUM(forest_area_sqkm)/SUM(TOTAL_AREA))*100 AS Forest_Percentage
+       ,SUM(FOREST_AREA) AS Total_Forest_Area
+FROM  Region_Demographic
+WHERE YEAR='2016'
+GROUP BY region, YEAR
+ORDER BY Forest_Percentage
+
+
+2B)
+
+SELECT  region, year
+       ,(SUM(forest_area_sqkm)/SUM(TOTAL_AREA))*100 AS Forest_Percentage
+       ,SUM(FOREST_AREA) AS Total_Forest_Area
+FROM  Region_Demographic
+WHERE YEAR='1990'
+GROUP BY region, YEAR
+ORDER BY Forest_Percentage
+
+2C)
+
+WITH 
+TableForest_1990 AS (
+	SELECT YEAR, region, (SUM(FOREST_AREA)/SUM(TOTAL_AREA)*100) AS Forest_Area_Percent_1990
+	FROM Region_Demographic
+	WHERE YEAR = '1990'
+	GROUP BY YEAR, region
+	ORDER BY YEAR, region, Forest_Area_Percent_1990),
+
+TableForest_2016 AS (
+	SELECT YEAR, region, (SUM(FOREST_AREA)/SUM(TOTAL_AREA)*100) AS Forest_Area_Percent_2016
+	FROM Region_Demographic
+	WHERE YEAR = '2016'
+	GROUP BY YEAR, region
+	ORDER BY YEAR, region, Forest_Area_Percent_2016)
+
+SELECT TableForest_1990.region, TableForest_2016.Forest_Area_Percent_2016, TableForest_1990.Forest_Area_Percent_1990, (TableForest_2016.Forest_Area_Percent_2016 - TableForest_1990.Forest_Area_Percent_1990) AS Forest_Percent_Difference
+FROM TableForest_2016
+JOIN TableForest_1990
+ON TableForest_2016.region=TableForest_1990.region
+ORDER BY Forest_Percent_Difference
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+3)
+
+CREATE VIEW forestation
+AS
+SELECT f.country_code 
+,f.country_name AS COUNTRY
+,f.year AS YEAR
+,f.forest_area_sqkm AS FOREST_AREA
+,((l.total_area_sq_mi)*2.59) AS TOTAL_AREA
+,r.region
+,r.income_group
+,((f.forest_area_sqkm / (l.total_area_sq_mi*2.59)) * 100) AS FOREST_PERCENTAGE
+FROM forest_area f
+INNER JOIN land_area l ON f.country_code = l.country_code
+AND f.year = l.year
+INNER JOIN regions r ON r.country_code = f.country_code 
+
+3A)
+-----
+
+WITH 
+Forest_1990 AS (
+	SELECT country_code, COUNTRY, FOREST_AREA, TOTAL_AREA, FOREST_PERCENTAGE
+    FROM forestation 
+	WHERE YEAR = '1990'),
+    
+Forest_2016	AS (
+	SELECT country_code, region, COUNTRY, FOREST_AREA, TOTAL_AREA, FOREST_PERCENTAGE
+    FROM forestation 
+	WHERE YEAR = '2016')
+	
+	
+SELECT Forest_1990.country_code, Forest_1990.COUNTRY, Forest_2016.region, ROUND((Forest_1990.FOREST_AREA)::numeric, 2) FOREST_AREA_1990, ROUND((Forest_2016.FOREST_AREA)::numeric,2) FOREST_AREA_2016,
+	ROUND(((Forest_1990.FOREST_AREA - Forest_2016.FOREST_AREA))::numeric, 2) Forest_Area_Difference, ROUND((Forest_1990.TOTAL_AREA)::numeric, 2) TOTAL_AREA_1990, ROUND((Forest_2016.TOTAL_AREA)::numeric, 2) TOTAL_AREA_2016
+FROM Forest_1990 JOIN Forest_2016 ON Forest_1990.country_code = Forest_2016.country_code
+WHERE Forest_2016.FOREST_AREA IS NOT NULL AND Forest_1990.FOREST_AREA IS NOT NULL AND Forest_1990.country_code != 'WLD'
+ORDER BY Forest_Area_Difference LIMIT 5;
+
+3B)
+-----
+
+WITH 
+Forest_1990 AS (
+	SELECT country_code, COUNTRY, FOREST_AREA, TOTAL_AREA, FOREST_PERCENTAGE
+    FROM forestation 
+	WHERE YEAR = '1990'),
+    
+Forest_2016	AS (
+	SELECT country_code, region, COUNTRY, FOREST_AREA, TOTAL_AREA, FOREST_PERCENTAGE
+    FROM forestation 
+	WHERE YEAR = '2016')
+	
+SELECT Forest_1990.country_code, Forest_1990.COUNTRY, Forest_2016.region, ROUND((Forest_1990.FOREST_AREA)::numeric, 2) FOREST_AREA_1990, ROUND((Forest_2016.FOREST_AREA)::numeric,2) FOREST_AREA_2016,
+	ROUND(((Forest_2016.FOREST_AREA - Forest_1990.FOREST_AREA)/Forest_1990.FOREST_AREA)::numeric, 2) Forest_Percentage_Change, ROUND((Forest_1990.TOTAL_AREA)::numeric, 2) TOTAL_AREA_1990, ROUND((Forest_2016.TOTAL_AREA)::numeric, 2) TOTAL_AREA_2016
+FROM Forest_1990 JOIN Forest_2016 ON Forest_1990.country_code = Forest_2016.country_code
+WHERE Forest_2016.FOREST_AREA IS NOT NULL AND Forest_1990.FOREST_AREA IS NOT NULL AND Forest_1990.country_code != 'WLD'
+ORDER BY Forest_Percentage_Change LIMIT 5;
+
+3C)
+-----
+
+CREATE VIEW QUARTILE_DISRIBUTION AS	(
+	SELECT forestation.COUNTRY, forestation.region, forestation.FOREST_PERCENTAGE,
+		CASE when forestation.FOREST_PERCENTAGE > 75 THEN '> 75%'
+		WHEN forestation.FOREST_PERCENTAGE BETWEEN 50 AND 75 THEN 'Between 50% and 75%'
+		WHEN forestation.FOREST_PERCENTAGE BETWEEN 25 AND 50 THEN 'Between 50% and 25%'
+		ELSE 'Less than 25%' END AS FOREST_QUARTILE
+	FROM forestation
+	WHERE forestation.year = '2016' AND forestation.FOREST_PERCENTAGE IS NOT NULL
+	GROUP BY 1,2,3
+	ORDER BY FOREST_QUARTILE);
+
+SELECT DISTINCT(FOREST_QUARTILE), COUNT(COUNTRY) OVER (PARTITION BY FOREST_QUARTILE)
+FROM QUARTILE_DISRIBUTION
+
+3D)
+-----
+
+SELECT DISTINCT(forestation.COUNTRY) AS COUNTRY, ROUND((forestation.FOREST_PERCENTAGE)::numeric, 2) AS FOREST_PERCENTAGE
+FROM forestation
+WHERE forestation.FOREST_PERCENTAGE>75 AND forestation.YEAR='2016'
+ORDER BY forestation.FOREST_PERCENTAGE DESC
+
+3E)
+----
+
+SELECT COUNT(DISTINCT(forestation.COUNTRY))
+FROM forestation
+WHERE forestation.FOREST_PERCENTAGE>(SELECT ROUND((forestation.FOREST_PERCENTAGE)::numeric, 2) FROM forestation WHERE forestation.COUNTRY='United States' and YEAR='2016') AND YEAR='2016'
+
